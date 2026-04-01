@@ -1,10 +1,24 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 export default function Home() {
   const [user, setUser] = useState<any>(null)
   const [status, setStatus] = useState("")
+
+  useEffect(() => {
+    // Load Pi SDK script
+    const script = document.createElement("script")
+    script.src = "https://sdk.minepi.com/pi-sdk.js"
+    script.async = true
+    script.onload = () => {
+      // Initialize Pi SDK in sandbox/testnet mode once loaded
+      const Pi = (window as any).Pi
+      Pi.init({ version: "2.0", sandbox: true })
+      setStatus("Pi SDK ready")
+    }
+    document.head.appendChild(script)
+  }, [])
 
   function handleLogin() {
     setStatus("Connecting to Pi Network...")
@@ -28,7 +42,6 @@ export default function Home() {
 
   function onIncompletePaymentFound(payment: any) {
     setStatus("Incomplete payment found. Handling...")
-    // You can wire this to your /api/payment/complete route later
     console.log("Incomplete payment:", payment)
   }
 
@@ -46,11 +59,9 @@ export default function Home() {
       {
         onReadyForServerApproval: (paymentId: string) => {
           setStatus("Ready for approval. Payment ID: " + paymentId)
-          // Call your /api/payment/approve route here
         },
         onReadyForServerCompletion: (paymentId: string, txid: string) => {
           setStatus("Complete! TX ID: " + txid)
-          // Call your /api/payment/complete route here
         },
         onCancel: (paymentId: string) => {
           setStatus("Payment cancelled.")
@@ -64,11 +75,10 @@ export default function Home() {
 
   return (
     <main style={{ fontFamily: "sans-serif", maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
-      
+
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>ANTCPU Testnet</h1>
       <p style={{ color: "#888", marginBottom: 40 }}>Pi Network authentication and payment testing</p>
 
-      {/* Step 1 — Login */}
       {!user && (
         <button
           onClick={handleLogin}
@@ -87,7 +97,6 @@ export default function Home() {
         </button>
       )}
 
-      {/* Step 2 — Logged in, show transaction button */}
       {user && (
         <div>
           <p style={{ color: "#4CAF50", fontWeight: "bold", marginBottom: 24 }}>
@@ -111,7 +120,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Status message */}
       {status && (
         <p style={{ marginTop: 24, padding: 12, background: "#f5f5f5", borderRadius: 8, fontSize: 14, color: "#333" }}>
           {status}
