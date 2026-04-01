@@ -1,217 +1,127 @@
 "use client"
 
-import Link from "next/link"
-import { usePi } from "@/components/pi/pi-provider"
-import { PiLoginButton } from "@/components/pi/pi-login-button"
-import { PiNetworkBadge } from "@/components/pi/pi-network-badge"
-import { PiUserInfo } from "@/components/pi/pi-user-info"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
-  Layers,
-  Shield,
-  Zap,
-  Users,
-  ArrowLeftRight,
-  Code,
-  ArrowRight,
-  LayoutDashboard,
-} from "lucide-react"
+import { useState } from "react"
 
-const features = [
-  {
-    icon: Shield,
-    title: "Secure Authentication",
-    description:
-      "Pi Network verified authentication with scopes for username and payments. Built on official Pi SDK.",
-  },
-  {
-    icon: ArrowLeftRight,
-    title: "Payment Gateway",
-    description:
-      "Process Pi payments with server-side approval and completion. Testnet ready, mainnet prepared.",
-  },
-  {
-    icon: Users,
-    title: "Session Management",
-    description:
-      "Track logged-in users with real-time session monitoring. Built for multi-app infrastructure.",
-  },
-  {
-    icon: Code,
-    title: "Developer Framework",
-    description:
-      "Reusable, white-label infrastructure. Designed to support multiple Pi apps from a single platform.",
-  },
-]
+export default function Home() {
+  const [user, setUser] = useState<any>(null)
+  const [status, setStatus] = useState("")
 
-export default function HomePage() {
-  const { isAuthenticated } = usePi()
+  function handleLogin() {
+    setStatus("Connecting to Pi Network...")
+
+    const Pi = (window as any).Pi
+
+    if (!Pi) {
+      setStatus("Pi SDK not found. Please open this app inside the Pi Browser.")
+      return
+    }
+
+    Pi.authenticate(["username", "payments"], onIncompletePaymentFound)
+      .then((auth: any) => {
+        setUser(auth.user)
+        setStatus("Logged in as @" + auth.user.username)
+      })
+      .catch((err: any) => {
+        setStatus("Login failed: " + err.message)
+      })
+  }
+
+  function onIncompletePaymentFound(payment: any) {
+    setStatus("Incomplete payment found. Handling...")
+    // You can wire this to your /api/payment/complete route later
+    console.log("Incomplete payment:", payment)
+  }
+
+  function handleTestPayment() {
+    setStatus("Initiating testnet payment...")
+
+    const Pi = (window as any).Pi
+
+    Pi.createPayment(
+      {
+        amount: 0.001,
+        memo: "ANTCPU Testnet Transaction",
+        metadata: { test: true },
+      },
+      {
+        onReadyForServerApproval: (paymentId: string) => {
+          setStatus("Ready for approval. Payment ID: " + paymentId)
+          // Call your /api/payment/approve route here
+        },
+        onReadyForServerCompletion: (paymentId: string, txid: string) => {
+          setStatus("Complete! TX ID: " + txid)
+          // Call your /api/payment/complete route here
+        },
+        onCancel: (paymentId: string) => {
+          setStatus("Payment cancelled.")
+        },
+        onError: (error: any) => {
+          setStatus("Payment error: " + error.message)
+        },
+      }
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto flex h-14 items-center justify-between gap-4 px-4">
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-lg bg-primary flex items-center justify-center">
-              <Layers className="size-5 text-primary-foreground" />
-            </div>
-            <span className="font-semibold hidden sm:inline">Pi Infrastructure</span>
-            <PiNetworkBadge />
-          </div>
-          <div className="flex items-center gap-2">
-            {isAuthenticated ? (
-              <>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/dashboard">
-                    <LayoutDashboard className="size-4" />
-                    Dashboard
-                  </Link>
-                </Button>
-                <PiUserInfo />
-              </>
-            ) : (
-              <PiLoginButton size="sm" />
-            )}
-          </div>
-        </div>
-      </header>
+    <main style={{ fontFamily: "sans-serif", maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
+      
+      <h1 style={{ fontSize: 28, marginBottom: 8 }}>ANTCPU Testnet</h1>
+      <p style={{ color: "#888", marginBottom: 40 }}>Pi Network authentication and payment testing</p>
 
-      {/* Hero Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="max-w-3xl mx-auto text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-4 py-1.5 text-sm">
-              <Zap className="size-4 text-primary" />
-              <span>Testnet Ready</span>
-            </div>
-          </div>
+      {/* Step 1 — Login */}
+      {!user && (
+        <button
+          onClick={handleLogin}
+          style={{
+            background: "#7B3FE4",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            padding: "14px 32px",
+            fontSize: 18,
+            cursor: "pointer",
+            width: "100%",
+          }}
+        >
+          Login with Pi
+        </button>
+      )}
 
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-balance">
-            Pi Network Infrastructure Platform
-          </h1>
-
-          <p className="text-lg text-muted-foreground text-pretty max-w-2xl mx-auto">
-            Authentication and payment gateway infrastructure for Pi Network
-            applications. Built for developers who want to integrate Pi payments
-            into their apps with a robust, reusable framework.
+      {/* Step 2 — Logged in, show transaction button */}
+      {user && (
+        <div>
+          <p style={{ color: "#4CAF50", fontWeight: "bold", marginBottom: 24 }}>
+            ✓ Logged in as @{user.username}
           </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            {isAuthenticated ? (
-              <>
-                <Button size="lg" asChild>
-                  <Link href="/dashboard">
-                    <LayoutDashboard className="size-4" />
-                    Go to Dashboard
-                  </Link>
-                </Button>
-                <Button variant="outline" size="lg" asChild>
-                  <Link href="/pay">
-                    <ArrowLeftRight className="size-4" />
-                    Make a Payment
-                  </Link>
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button size="lg" asChild>
-                  <Link href="/login">
-                    Get Started
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
-                <Button variant="outline" size="lg" asChild>
-                  <Link href="/setup">
-                    Setup Guide
-                  </Link>
-                </Button>
-              </>
-            )}
-          </div>
+          <button
+            onClick={handleTestPayment}
+            style={{
+              background: "#1a1a2e",
+              color: "white",
+              border: "2px solid #7B3FE4",
+              borderRadius: 8,
+              padding: "14px 32px",
+              fontSize: 18,
+              cursor: "pointer",
+              width: "100%",
+            }}
+          >
+            Send Testnet Payment (0.001 π)
+          </button>
         </div>
-      </section>
+      )}
 
-      {/* Features Section */}
-      <section className="container mx-auto px-4 py-16 border-t">
-        <div className="text-center mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Built for Pi Developers
-          </h2>
-          <p className="text-muted-foreground mt-2 max-w-xl mx-auto">
-            Everything you need to build Pi-powered applications with robust
-            authentication and payment processing.
-          </p>
-        </div>
+      {/* Status message */}
+      {status && (
+        <p style={{ marginTop: 24, padding: 12, background: "#f5f5f5", borderRadius: 8, fontSize: 14, color: "#333" }}>
+          {status}
+        </p>
+      )}
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {features.map((feature) => (
-            <Card key={feature.title} className="bg-card/50">
-              <CardHeader>
-                <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
-                  <feature.icon className="size-5 text-primary" />
-                </div>
-                <CardTitle className="text-lg">{feature.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="text-sm">
-                  {feature.description}
-                </CardDescription>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
+      <p style={{ marginTop: 48, fontSize: 12, color: "#bbb" }}>
+        Testnet only — Test Pi has no real value
+      </p>
 
-      {/* CTA Section */}
-      <section className="container mx-auto px-4 py-16">
-        <Card className="bg-muted/50 border-dashed">
-          <CardContent className="py-12">
-            <div className="max-w-2xl mx-auto text-center space-y-4">
-              <h2 className="text-2xl font-bold tracking-tight">
-                Ready to integrate Pi payments?
-              </h2>
-              <p className="text-muted-foreground">
-                This platform is designed as reusable infrastructure. Use it as a
-                foundation for your own Pi-powered application or as a monitoring
-                service for multiple apps.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                <Button size="lg" asChild>
-                  <Link href="/setup">
-                    Get Started
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t py-8">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="size-6 rounded bg-primary flex items-center justify-center">
-                <Layers className="size-4 text-primary-foreground" />
-              </div>
-              <span className="text-sm font-medium">Pi Infrastructure Platform</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Built for Pi Network testnet. Test Pi has no real value.
-            </p>
-          </div>
-        </div>
-      </footer>
-    </div>
+    </main>
   )
 }
