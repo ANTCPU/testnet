@@ -47,28 +47,59 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [sessionInfo, setSessionInfo] = useState<any>(null)
   const [txCount, setTxCount] = useState<number>(0)
+  const [piReady, setPiReady] = useState(false)
+  const [inPiBrowser, setInPiBrowser] = useState(false)
 
   useEffect(() => {
-    const script = document.createElement("script")
-    script.src = "https://sdk.minepi.com/pi-sdk.js"
-    script.async = true
-    script.onload = () => {
+    // Check if inside Pi Browser
+    const isPiBrowser = /PiBrowser/i.test(navigator.userAgent)
+    setInPiBrowser(isPiBrowser)
+
+    if (isPiBrowser) {
+      // Pi Browser provides the SDK — just init it
       const Pi = (window as any).Pi
-      Pi.init({ version: "2.0", sandbox: true })
-      setStatus("Pi SDK ready — Sandbox mode")
+      if (Pi) {
+        Pi.init({ version: "2.0", sandbox: true })
+        setPiReady(true)
+        setStatus("Pi SDK ready — Pi Browser")
+      } else {
+        setStatus("Waiting for Pi SDK...")
+        // Poll briefly in case SDK loads slightly after page
+        const interval = setInterval(() => {
+          const Pi = (window as any).Pi
+          if (Pi) {
+            Pi.init({ version: "2.0", sandbox: true })
+            setPiReady(true)
+            setStatus("Pi SDK ready — Pi Browser")
+            clearInterval(interval)
+          }
+        }, 300)
+        setTimeout(() => clearInterval(interval), 5000)
+      }
+    } else {
+      // Not Pi Browser — load SDK script for sandbox
+      const script = document.createElement("script")
+      script.src = "https://sdk.minepi.com/pi-sdk.js"
+      script.async = true
+      script.onload = () => {
+        const Pi = (window as any).Pi
+        Pi.init({ version: "2.0", sandbox: true })
+        setPiReady(true)
+        setStatus("Pi SDK ready — Sandbox mode")
+      }
+      script.onerror = () => {
+        setStatus("Failed to load Pi SDK. Are you inside Pi Browser?")
+      }
+      document.head.appendChild(script)
     }
-    document.head.appendChild(script)
   }, [])
 
   async function fetchUserData(uid: string) {
     try {
-      // Fetch session info
       const sessionRes = await fetch("/api/sessions")
       const sessionData = await sessionRes.json()
       const mySession = sessionData.sessions?.find((s: any) => s.userId === uid)
       if (mySession) setSessionInfo(mySession)
-
-      // Fetch transaction count
       const txRes = await fetch(`/api/transactions?userId=${uid}`)
       const txData = await txRes.json()
       if (txData.total !== undefined) setTxCount(txData.total)
@@ -84,7 +115,7 @@ export default function Home() {
     const Pi = (window as any).Pi
 
     if (!Pi) {
-      setStatus("Pi SDK not found. Please open this app inside the Pi Browser.")
+      setStatus("Pi SDK not found. Please open this app inside Pi Browser.")
       setLoading(false)
       return
     }
@@ -245,21 +276,37 @@ export default function Home() {
           borderRadius: 20,
           fontSize: 12,
           fontWeight: 600,
-          background: "rgba(255,152,0,0.15)",
-          color: "#ffb74d",
-          border: "1px solid rgba(255,152,0,0.3)",
+          background: inPiBrowser ? "rgba(76,175,80,0.15)" : "rgba(255,152,0,0.15)",
+          color: inPiBrowser ? "#81c784" : "#ffb74d",
+          border: inPiBrowser ? "1px solid rgba(76,175,80,0.3)" : "1px solid rgba(255,152,0,0.3)",
         }}>
-          ⚠ Sandbox Mode
+          {inPiBrowser ? "✓ Pi Browser" : "⚠ Sandbox Mode"}
         </div>
+
+        {/* Not in Pi Browser warning */}
+        {!inPiBrowser && !user && (
+          <div style={{
+            background: "rgba(255,152,0,0.08)",
+            border: "1px solid rgba(255,152,0,0.2)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 20,
+            fontSize: 12,
+            color: "rgba(255,255,255,0.4)",
+          }}>
+            For full testing open in Pi Browser and navigate to<br />
+            <strong style={{ color: "#ffb74d" }}>auth-antcpu.vercel.app</strong>
+          </div>
+        )}
 
         {/* Login button */}
         {!user && (
           <button
             onClick={handleLogin}
-            disabled={loading}
+            disabled={loading || !piReady}
             style={{
-              background: loading
-                ? "rgba(123,63,228,0.5)"
+              background: loading || !piReady
+                ? "rgba(123,63,228,0.4)"
                 : "linear-gradient(135deg, #7B3FE4, #5b2db0)",
               color: "white",
               border: "none",
@@ -267,20 +314,18 @@ export default function Home() {
               padding: "16px 32px",
               fontSize: 17,
               fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
+              cursor: loading || !piReady ? "not-allowed" : "pointer",
               width: "100%",
               transition: "all 0.2s",
             }}
           >
-            {loading ? "Connecting..." : "Login with Pi"}
+            {loading ? "Connecting..." : !piReady ? "Loading SDK..." : "Login with Pi"}
           </button>
         )}
 
         {/* Logged in state */}
         {user && (
           <div>
-
-            {/* User profile card */}
             <div style={{
               background: "rgba(255,255,255,0.04)",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -289,7 +334,6 @@ export default function Home() {
               marginBottom: 20,
               textAlign: "left",
             }}>
-              {/* Username and tier */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div>
                   <p style={{ color: "#81c784", fontWeight: 700, margin: 0, fontSize: 16 }}>
@@ -314,14 +358,8 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Stats row */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                <div style={{
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: 10,
-                  padding: "10px 8px",
-                  textAlign: "center",
-                }}>
+                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
                   <p style={{ color: "#7B3FE4", fontWeight: 700, margin: 0, fontSize: 18 }}>
                     {txCount}
                   </p>
@@ -329,26 +367,16 @@ export default function Home() {
                     Transactions
                   </p>
                 </div>
-                <div style={{
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: 10,
-                  padding: "10px 8px",
-                  textAlign: "center",
-                }}>
-                  <p style={{ color: "#3f8fe4", fontWeight: 700, margin: 0, fontSize: 18 }}>
+                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+                  <p style={{ color: "#3f8fe4", fontWeight: 700, margin: 0, fontSize: 16 }}>
                     {sessionInfo ? memberDuration(sessionInfo.connectedAt) : "—"}
                   </p>
                   <p style={{ color: "rgba(255,255,255,0.4)", margin: "2px 0 0", fontSize: 10 }}>
                     Member For
                   </p>
                 </div>
-                <div style={{
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: 10,
-                  padding: "10px 8px",
-                  textAlign: "center",
-                }}>
-                  <p style={{ color: "#ffb74d", fontWeight: 700, margin: 0, fontSize: 14 }}>
+                <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+                  <p style={{ color: "#ffb74d", fontWeight: 700, margin: 0, fontSize: 13 }}>
                     {sessionInfo ? timeAgo(sessionInfo.lastActiveAt) : "—"}
                   </p>
                   <p style={{ color: "rgba(255,255,255,0.4)", margin: "2px 0 0", fontSize: 10 }}>
@@ -358,14 +386,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Payment button */}
             <button
               onClick={handleTestPayment}
               disabled={loading}
               style={{
-                background: loading
-                  ? "rgba(255,255,255,0.03)"
-                  : "rgba(255,255,255,0.06)",
+                background: loading ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)",
                 color: loading ? "rgba(255,255,255,0.2)" : "white",
                 border: "1px solid rgba(123,63,228,0.6)",
                 borderRadius: 12,
@@ -381,7 +406,6 @@ export default function Home() {
               {loading ? "Processing..." : "Send Testnet Payment (0.001 π)"}
             </button>
 
-            {/* Logout */}
             <button
               onClick={handleLogout}
               style={{
