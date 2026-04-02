@@ -2,32 +2,80 @@
 
 import { useState, useEffect } from "react"
 
+function timeAgo(dateString: string) {
+  const date = new Date(dateString)
+  const now = new Date()
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  const months = Math.floor(days / 30)
+  if (months > 0) return `${months} month${months > 1 ? "s" : ""} ago`
+  if (days > 0) return `${days} day${days > 1 ? "s" : ""} ago`
+  if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  if (minutes > 0) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
+  return "Just now"
+}
+
+function memberDuration(dateString: string) {
+  const date = new Date(dateString)
+  const now = new Date()
+  const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  const months = Math.floor(days / 30)
+  const years = Math.floor(days / 365)
+  if (years > 0) return `${years} year${years > 1 ? "s" : ""}`
+  if (months > 0) return `${months} month${months > 1 ? "s" : ""}`
+  if (days > 0) return `${days} day${days > 1 ? "s" : ""}`
+  return "Today"
+}
+
+function memberTier(dateString: string) {
+  const days = Math.floor(
+    (new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24)
+  )
+  if (days >= 365) return { label: "Pioneer", color: "#FFD700", icon: "🏆" }
+  if (days >= 180) return { label: "Builder", color: "#C0C0C0", icon: "🔨" }
+  if (days >= 90) return { label: "Explorer", color: "#CD7F32", icon: "🧭" }
+  if (days >= 30) return { label: "Member", color: "#7B3FE4", icon: "⭐" }
+  return { label: "Newcomer", color: "#3f8fe4", icon: "🌱" }
+}
+
 export default function Home() {
   const [user, setUser] = useState<any>(null)
   const [accessToken, setAccessToken] = useState<string>("")
   const [status, setStatus] = useState("")
-  const [isSandbox, setIsSandbox] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [sessionInfo, setSessionInfo] = useState<any>(null)
+  const [txCount, setTxCount] = useState<number>(0)
 
   useEffect(() => {
-    const inPiBrowser = /PiBrowser/i.test(navigator.userAgent)
-    const sandboxMode = !inPiBrowser
-    setIsSandbox(sandboxMode)
-
     const script = document.createElement("script")
     script.src = "https://sdk.minepi.com/pi-sdk.js"
     script.async = true
     script.onload = () => {
       const Pi = (window as any).Pi
-      Pi.init({ version: "2.0", sandbox: sandboxMode })
-      setStatus(
-        sandboxMode
-          ? "Pi SDK ready — Sandbox mode"
-          : "Pi SDK ready — Pi Browser mode"
-      )
+      Pi.init({ version: "2.0", sandbox: true })
+      setStatus("Pi SDK ready — Sandbox mode")
     }
     document.head.appendChild(script)
   }, [])
+
+  async function fetchUserData(uid: string) {
+    try {
+      // Fetch session info
+      const sessionRes = await fetch("/api/sessions")
+      const sessionData = await sessionRes.json()
+      const mySession = sessionData.sessions?.find((s: any) => s.userId === uid)
+      if (mySession) setSessionInfo(mySession)
+
+      // Fetch transaction count
+      const txRes = await fetch(`/api/transactions?userId=${uid}`)
+      const txData = await txRes.json()
+      if (txData.total !== undefined) setTxCount(txData.total)
+    } catch (err) {
+      console.error("Failed to fetch user data:", err)
+    }
+  }
 
   function handleLogin() {
     setStatus("Connecting to Pi Network...")
@@ -56,6 +104,7 @@ export default function Home() {
           setUser(auth.user)
           setAccessToken(auth.accessToken)
           setStatus("Logged in as @" + auth.user.username)
+          await fetchUserData(auth.user.uid)
         } else {
           setStatus("Auth failed: " + (data.error || "Unknown error"))
         }
@@ -113,6 +162,7 @@ export default function Home() {
           const data = await res.json()
           if (res.ok) {
             setStatus("✓ Payment complete! TX ID: " + txid)
+            setTxCount((prev) => prev + 1)
           } else {
             setStatus("Completion failed: " + (data.error || "Unknown error"))
           }
@@ -134,8 +184,12 @@ export default function Home() {
     fetch("/api/pi/logout", { method: "POST" })
     setUser(null)
     setAccessToken("")
+    setSessionInfo(null)
+    setTxCount(0)
     setStatus("Logged out.")
   }
+
+  const tier = sessionInfo ? memberTier(sessionInfo.connectedAt) : null
 
   return (
     <main style={{
@@ -159,7 +213,7 @@ export default function Home() {
         boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       }}>
 
-        {/* Logo / Title */}
+        {/* Logo */}
         <div style={{
           width: 64,
           height: 64,
@@ -170,6 +224,8 @@ export default function Home() {
           alignItems: "center",
           justifyContent: "center",
           fontSize: 28,
+          color: "white",
+          fontWeight: "bold",
         }}>
           π
         </div>
@@ -189,11 +245,11 @@ export default function Home() {
           borderRadius: 20,
           fontSize: 12,
           fontWeight: 600,
-          background: isSandbox ? "rgba(255,152,0,0.15)" : "rgba(76,175,80,0.15)",
-          color: isSandbox ? "#ffb74d" : "#81c784",
-          border: isSandbox ? "1px solid rgba(255,152,0,0.3)" : "1px solid rgba(76,175,80,0.3)",
+          background: "rgba(255,152,0,0.15)",
+          color: "#ffb74d",
+          border: "1px solid rgba(255,152,0,0.3)",
         }}>
-          {isSandbox ? "⚠ Sandbox Mode" : "✓ Pi Browser Mode"}
+          ⚠ Sandbox Mode
         </div>
 
         {/* Login button */}
@@ -214,7 +270,6 @@ export default function Home() {
               cursor: loading ? "not-allowed" : "pointer",
               width: "100%",
               transition: "all 0.2s",
-              letterSpacing: 0.5,
             }}
           >
             {loading ? "Connecting..." : "Login with Pi"}
@@ -224,52 +279,120 @@ export default function Home() {
         {/* Logged in state */}
         {user && (
           <div>
+
+            {/* User profile card */}
             <div style={{
-              background: "rgba(76,175,80,0.1)",
-              border: "1px solid rgba(76,175,80,0.3)",
-              borderRadius: 12,
-              padding: "14px 20px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 14,
+              padding: "20px",
               marginBottom: 20,
+              textAlign: "left",
             }}>
-              <p style={{ color: "#81c784", fontWeight: 600, margin: 0, fontSize: 15 }}>
-                ✓ Logged in as @{user.username}
-              </p>
+              {/* Username and tier */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div>
+                  <p style={{ color: "#81c784", fontWeight: 700, margin: 0, fontSize: 16 }}>
+                    @{user.username}
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.3)", margin: "2px 0 0", fontSize: 12 }}>
+                    Pi Network User
+                  </p>
+                </div>
+                {tier && (
+                  <div style={{
+                    padding: "4px 12px",
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background: `${tier.color}22`,
+                    color: tier.color,
+                    border: `1px solid ${tier.color}44`,
+                  }}>
+                    {tier.icon} {tier.label}
+                  </div>
+                )}
+              </div>
+
+              {/* Stats row */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div style={{
+                  background: "rgba(255,255,255,0.04)",
+                  borderRadius: 10,
+                  padding: "10px 8px",
+                  textAlign: "center",
+                }}>
+                  <p style={{ color: "#7B3FE4", fontWeight: 700, margin: 0, fontSize: 18 }}>
+                    {txCount}
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.4)", margin: "2px 0 0", fontSize: 10 }}>
+                    Transactions
+                  </p>
+                </div>
+                <div style={{
+                  background: "rgba(255,255,255,0.04)",
+                  borderRadius: 10,
+                  padding: "10px 8px",
+                  textAlign: "center",
+                }}>
+                  <p style={{ color: "#3f8fe4", fontWeight: 700, margin: 0, fontSize: 18 }}>
+                    {sessionInfo ? memberDuration(sessionInfo.connectedAt) : "—"}
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.4)", margin: "2px 0 0", fontSize: 10 }}>
+                    Member For
+                  </p>
+                </div>
+                <div style={{
+                  background: "rgba(255,255,255,0.04)",
+                  borderRadius: 10,
+                  padding: "10px 8px",
+                  textAlign: "center",
+                }}>
+                  <p style={{ color: "#ffb74d", fontWeight: 700, margin: 0, fontSize: 14 }}>
+                    {sessionInfo ? timeAgo(sessionInfo.lastActiveAt) : "—"}
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.4)", margin: "2px 0 0", fontSize: 10 }}>
+                    Last Active
+                  </p>
+                </div>
+              </div>
             </div>
 
+            {/* Payment button */}
             <button
               onClick={handleTestPayment}
               disabled={loading}
               style={{
                 background: loading
-                  ? "rgba(255,255,255,0.05)"
-                  : "rgba(255,255,255,0.08)",
-                color: loading ? "rgba(255,255,255,0.3)" : "white",
+                  ? "rgba(255,255,255,0.03)"
+                  : "rgba(255,255,255,0.06)",
+                color: loading ? "rgba(255,255,255,0.2)" : "white",
                 border: "1px solid rgba(123,63,228,0.6)",
                 borderRadius: 12,
                 padding: "16px 32px",
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: 600,
                 cursor: loading ? "not-allowed" : "pointer",
                 width: "100%",
-                marginBottom: 12,
+                marginBottom: 10,
                 transition: "all 0.2s",
               }}
             >
               {loading ? "Processing..." : "Send Testnet Payment (0.001 π)"}
             </button>
 
+            {/* Logout */}
             <button
               onClick={handleLogout}
               style={{
                 background: "transparent",
-                color: "rgba(255,255,255,0.3)",
-                border: "1px solid rgba(255,255,255,0.1)",
+                color: "rgba(255,255,255,0.25)",
+                border: "1px solid rgba(255,255,255,0.08)",
                 borderRadius: 12,
                 padding: "10px 32px",
                 fontSize: 13,
                 cursor: "pointer",
                 width: "100%",
-                transition: "all 0.2s",
               }}
             >
               Logout
@@ -286,26 +409,26 @@ export default function Home() {
               ? "rgba(76,175,80,0.1)"
               : status.includes("failed") || status.includes("error") || status.includes("Error")
               ? "rgba(244,67,54,0.1)"
-              : "rgba(255,255,255,0.05)",
+              : "rgba(255,255,255,0.04)",
             border: status.startsWith("✓")
               ? "1px solid rgba(76,175,80,0.3)"
               : status.includes("failed") || status.includes("error") || status.includes("Error")
               ? "1px solid rgba(244,67,54,0.3)"
-              : "1px solid rgba(255,255,255,0.1)",
+              : "1px solid rgba(255,255,255,0.08)",
             borderRadius: 10,
             fontSize: 13,
             color: status.startsWith("✓")
               ? "#81c784"
               : status.includes("failed") || status.includes("error") || status.includes("Error")
               ? "#ef9a9a"
-              : "rgba(255,255,255,0.6)",
+              : "rgba(255,255,255,0.5)",
             lineHeight: 1.5,
           }}>
             {status}
           </div>
         )}
 
-        <p style={{ marginTop: 32, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
+        <p style={{ marginTop: 32, fontSize: 11, color: "rgba(255,255,255,0.15)" }}>
           Testnet only — Test Pi has no real value
         </p>
 
